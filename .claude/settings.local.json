@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(git -C /Users/robeirtoma/Travel-planner init)",
+      "Bash(git -C /Users/robeirtoma/Travel-planner add .)",
+      "Bash(git -C /Users/robeirtoma/Travel-planner commit -m 'Phase 0: Initial monorepo scaffold *)"
+    ]
+  }
+}
