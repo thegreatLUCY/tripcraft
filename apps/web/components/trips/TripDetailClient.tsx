@@ -263,9 +263,18 @@ export default function TripDetailClient({
     if (!over || active.id === over.id) return
     const oldIndex = sortedDests.findIndex(d => d.id === active.id)
     const newIndex = sortedDests.findIndex(d => d.id === over.id)
+    const previous = destinations
     const reordered = arrayMove(sortedDests, oldIndex, newIndex).map((d, i) => ({ ...d, position: i + 1 }))
-    setDestinations(reordered)
-    await Promise.all(reordered.map((d, i) => supabase.from('trip_destinations').update({ position: i + 1 }).eq('id', d.id)))
+    setDestinations(reordered) // optimistic
+
+    // .select() returns the updated rows — empty means RLS silently blocked it.
+    const results = await Promise.all(
+      reordered.map((d, i) =>
+        supabase.from('trip_destinations').update({ position: i + 1 }).eq('id', d.id).select('id')
+      )
+    )
+    const failed = results.some(r => r.error || !r.data || r.data.length === 0)
+    if (failed) setDestinations(previous) // roll back so UI matches the DB
   }
 
   // ── Itinerary handlers ────────────────────────────────────────────────────────
@@ -325,15 +334,18 @@ export default function TripDetailClient({
     if (swapIdx < 0 || swapIdx >= dayItems.length) return
     const a = dayItems[idx]
     const b = dayItems[swapIdx]
-    await Promise.all([
-      supabase.from('itinerary_items').update({ position: b.position }).eq('id', a.id),
-      supabase.from('itinerary_items').update({ position: a.position }).eq('id', b.id),
-    ])
-    setItems(prev => prev.map(i => {
+    const previous = items
+    setItems(prev => prev.map(i => {        // optimistic
       if (i.id === a.id) return { ...i, position: b.position }
       if (i.id === b.id) return { ...i, position: a.position }
       return i
     }))
+    const results = await Promise.all([
+      supabase.from('itinerary_items').update({ position: b.position }).eq('id', a.id).select('id'),
+      supabase.from('itinerary_items').update({ position: a.position }).eq('id', b.id).select('id'),
+    ])
+    const failed = results.some(r => r.error || !r.data || r.data.length === 0)
+    if (failed) setItems(previous) // roll back so UI matches the DB
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────

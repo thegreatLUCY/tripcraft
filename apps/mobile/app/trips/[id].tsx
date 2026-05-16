@@ -177,15 +177,18 @@ export default function TripDetailScreen() {
     if (swapIdx < 0 || swapIdx >= sortedDests.length) return
     const a = sortedDests[idx]
     const b = sortedDests[swapIdx]
-    await Promise.all([
-      supabase.from('trip_destinations').update({ position: b.position }).eq('id', a.id),
-      supabase.from('trip_destinations').update({ position: a.position }).eq('id', b.id),
-    ])
-    setDestinations(prev => prev.map(d => {
+    const previous = destinations
+    setDestinations(prev => prev.map(d => {  // optimistic
       if (d.id === a.id) return { ...d, position: b.position }
       if (d.id === b.id) return { ...d, position: a.position }
       return d
     }))
+    const results = await Promise.all([
+      supabase.from('trip_destinations').update({ position: b.position }).eq('id', a.id).select('id'),
+      supabase.from('trip_destinations').update({ position: a.position }).eq('id', b.id).select('id'),
+    ])
+    const failed = results.some(r => r.error || !r.data || r.data.length === 0)
+    if (failed) setDestinations(previous) // roll back so UI matches the DB
   }
 
   // ── Itinerary handlers ────────────────────────────────────────────────────────
@@ -241,15 +244,18 @@ export default function TripDetailScreen() {
     if (swapIdx < 0 || swapIdx >= dayItems.length) return
     const a = dayItems[idx]
     const b = dayItems[swapIdx]
-    await Promise.all([
-      supabase.from('itinerary_items').update({ position: b.position }).eq('id', a.id),
-      supabase.from('itinerary_items').update({ position: a.position }).eq('id', b.id),
-    ])
-    setItems(prev => prev.map(i => {
+    const previous = items
+    setItems(prev => prev.map(i => {        // optimistic
       if (i.id === a.id) return { ...i, position: b.position }
       if (i.id === b.id) return { ...i, position: a.position }
       return i
     }))
+    const results = await Promise.all([
+      supabase.from('itinerary_items').update({ position: b.position }).eq('id', a.id).select('id'),
+      supabase.from('itinerary_items').update({ position: a.position }).eq('id', b.id).select('id'),
+    ])
+    const failed = results.some(r => r.error || !r.data || r.data.length === 0)
+    if (failed) setItems(previous) // roll back so UI matches the DB
   }
 
   return (

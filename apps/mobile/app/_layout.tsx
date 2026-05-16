@@ -59,7 +59,6 @@ export default function RootLayout() {
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="trips/new" options={{ title: 'New Trip', presentation: 'modal' }} />
         <Stack.Screen name="trips/[id]" options={{ headerShown: false }} />
-        <Stack.Screen name="demo" options={{ title: 'Demo' }} />
       </Stack>
     </>
   )

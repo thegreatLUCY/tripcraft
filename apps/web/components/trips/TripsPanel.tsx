@@ -28,9 +28,6 @@ export default function TripsPanel({ trips }: { trips: Trip[] }) {
           <Link href="/trips/new" className={cn(buttonVariants({ size: 'sm' }))}>
             Plan a Trip
           </Link>
-          <Link href="/demo" className={cn(buttonVariants({ size: 'sm', variant: 'outline' }))}>
-            See a Demo
-          </Link>
         </div>
 
         <div className="mt-4 flex flex-wrap gap-2">
