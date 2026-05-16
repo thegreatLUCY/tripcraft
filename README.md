@@ -2,7 +2,7 @@
 
 A map-first travel planning app for web and mobile. Plan trips, pin destinations on an interactive map, and build a day-by-day itinerary — all in one place.
 
-> Built as a portfolio project. Production web app live at [tripcraft.vercel.app](https://tripcraft.vercel.app).
+> Built as a portfolio project. Production web app live at [tripcraft.vercel.app](https://tripcraft-pied.vercel.app).
 
 ---
 
