@@ -9,8 +9,45 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../../lib/supabase'
 import {
   type Destination, type Trip, type ItineraryItem, type NominatimResult,
+  type ItineraryItemType, type ActivityStatus,
   extractCity, formatDate, getDays, getDayLabel,
+  ITEM_TYPES, ACTIVITY_STATUSES, ITEM_TYPE_ICONS, ITEM_TYPE_LABELS,
+  ACTIVITY_STATUS_LABELS,
 } from '@tripcraft/shared'
+
+function ItemTypeStatusPicker({
+  type, status, onType, onStatus,
+}: {
+  type: ItineraryItemType
+  status: ActivityStatus
+  onType: (t: ItineraryItemType) => void
+  onStatus: (s: ActivityStatus) => void
+}) {
+  return (
+    <View className="gap-1.5">
+      <View className="flex-row gap-1">
+        {ITEM_TYPES.map(t => (
+          <TouchableOpacity key={t} onPress={() => onType(t)}
+            className={`flex-1 items-center rounded-lg py-1.5 ${type === t ? 'bg-teal-500' : 'bg-white dark:bg-neutral-900'}`}>
+            <Text className={`text-[11px] ${type === t ? 'text-white' : 'text-neutral-500 dark:text-neutral-400'}`}>
+              {ITEM_TYPE_ICONS[t]} {ITEM_TYPE_LABELS[t]}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <View className="flex-row gap-1">
+        {ACTIVITY_STATUSES.map(s => (
+          <TouchableOpacity key={s} onPress={() => onStatus(s)}
+            className={`flex-1 items-center rounded-lg py-1.5 ${status === s ? 'bg-teal-500' : 'bg-white dark:bg-neutral-900'}`}>
+            <Text className={`text-[11px] ${status === s ? 'text-white' : 'text-neutral-500 dark:text-neutral-400'}`}>
+              {ACTIVITY_STATUS_LABELS[s]}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  )
+}
 
 export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -47,12 +84,16 @@ export default function TripDetailScreen() {
   const [newTitle, setNewTitle] = useState('')
   const [newTime, setNewTime] = useState('')
   const [newNotes, setNewNotes] = useState('')
+  const [newType, setNewType] = useState<ItineraryItemType>('activity')
+  const [newStatus, setNewStatus] = useState<ActivityStatus>('definite')
   const [savingItem, setSavingItem] = useState(false)
   const [deletingItem, setDeletingItem] = useState<string | null>(null)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
   const [editItemTitle, setEditItemTitle] = useState('')
   const [editItemTime, setEditItemTime] = useState('')
   const [editItemNotes, setEditItemNotes] = useState('')
+  const [editItemType, setEditItemType] = useState<ItineraryItemType>('activity')
+  const [editItemStatus, setEditItemStatus] = useState<ActivityStatus>('definite')
   const [savingEditItem, setSavingEditItem] = useState(false)
 
   const sortedDests = [...destinations].sort((a, b) => a.position - b.position)
@@ -63,7 +104,7 @@ export default function TripDetailScreen() {
     Promise.all([
       supabase.from('trips').select('id, title, start_date, end_date').eq('id', id).single(),
       supabase.from('trip_destinations').select('id, city_name, country_name, lat, lng, notes, position').eq('trip_id', id).order('position'),
-      supabase.from('itinerary_items').select('id, day, title, time, notes, completed, position').eq('trip_id', id).order('day').order('position'),
+      supabase.from('itinerary_items').select('id, day, title, time, notes, completed, position, type, status').eq('trip_id', id).order('day').order('position'),
     ]).then(([{ data: t }, { data: d }, { data: it }]) => {
       setTrip(t)
       setDestinations(d ?? [])
@@ -199,11 +240,11 @@ export default function TripDetailScreen() {
     const dayItems = items.filter(i => i.day === day)
     const { data, error } = await supabase
       .from('itinerary_items')
-      .insert({ trip_id: id, day, title: newTitle.trim(), time: newTime || null, notes: newNotes.trim() || null, completed: false, position: dayItems.length + 1, user_id: user!.id })
-      .select('id, day, title, time, notes, completed, position').single()
+      .insert({ trip_id: id, day, title: newTitle.trim(), time: newTime || null, notes: newNotes.trim() || null, completed: false, position: dayItems.length + 1, type: newType, status: newStatus, user_id: user!.id })
+      .select('id, day, title, time, notes, completed, position, type, status').single()
     if (!error && data) {
       setItems(prev => [...prev, data])
-      setNewTitle(''); setNewTime(''); setNewNotes(''); setAddingToDay(null)
+      setNewTitle(''); setNewTime(''); setNewNotes(''); setNewType('activity'); setNewStatus('definite'); setAddingToDay(null)
     }
     setSavingItem(false)
   }
@@ -225,11 +266,11 @@ export default function TripDetailScreen() {
     setSavingEditItem(true)
     const { error } = await supabase
       .from('itinerary_items')
-      .update({ title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null })
+      .update({ title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null, type: editItemType, status: editItemStatus })
       .eq('id', editingItemId)
     if (!error) {
       setItems(prev => prev.map(i => i.id === editingItemId
-        ? { ...i, title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null }
+        ? { ...i, title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null, type: editItemType, status: editItemStatus }
         : i
       ))
       setEditingItemId(null)
@@ -453,6 +494,7 @@ export default function TripDetailScreen() {
                                 className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white" />
                               <TextInput value={editItemNotes} onChangeText={setEditItemNotes} placeholder="Notes (optional)" placeholderTextColor="#a1a1aa"
                                 className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white" />
+                              <ItemTypeStatusPicker type={editItemType} status={editItemStatus} onType={setEditItemType} onStatus={setEditItemStatus} />
                               <View className="flex-row gap-2">
                                 <TouchableOpacity onPress={handleSaveEditItem} disabled={savingEditItem || !editItemTitle.trim()}
                                   className="flex-1 items-center rounded-lg bg-teal-500 py-2" style={{ opacity: savingEditItem || !editItemTitle.trim() ? 0.5 : 1 }}>
@@ -473,8 +515,12 @@ export default function TripDetailScreen() {
                                 </TouchableOpacity>
 
                                 {item.time && <Text className="w-10 text-right text-xs tabular-nums text-neutral-400">{item.time}</Text>}
-                                <Text className={`flex-1 text-sm ${!item.time ? 'pl-12' : ''} ${item.completed ? 'text-neutral-400 line-through' : 'text-neutral-900 dark:text-white'}`}>
+                                <Text className="text-xs">{ITEM_TYPE_ICONS[item.type]}</Text>
+                                <Text className={`flex-1 text-sm ${item.completed ? 'text-neutral-400 line-through' : 'text-neutral-900 dark:text-white'}`}>
                                   {item.title}
+                                  {item.status !== 'definite' && (
+                                    <Text className="text-[10px] text-amber-500">{'  '}{ACTIVITY_STATUS_LABELS[item.status]}</Text>
+                                  )}
                                 </Text>
 
                                 {/* Reorder */}
@@ -486,7 +532,7 @@ export default function TripDetailScreen() {
                                 </TouchableOpacity>
 
                                 {/* Edit */}
-                                <TouchableOpacity onPress={() => { setEditingItemId(item.id); setEditItemTitle(item.title); setEditItemTime(item.time ?? ''); setEditItemNotes(item.notes ?? '') }}>
+                                <TouchableOpacity onPress={() => { setEditingItemId(item.id); setEditItemTitle(item.title); setEditItemTime(item.time ?? ''); setEditItemNotes(item.notes ?? ''); setEditItemType(item.type); setEditItemStatus(item.status) }}>
                                   <Text className="text-xs text-neutral-300">✎</Text>
                                 </TouchableOpacity>
 
@@ -516,6 +562,7 @@ export default function TripDetailScreen() {
                             className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white" />
                           <TextInput placeholder="Notes (optional)" placeholderTextColor="#a1a1aa" value={newNotes} onChangeText={setNewNotes}
                             className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white" />
+                          <ItemTypeStatusPicker type={newType} status={newStatus} onType={setNewType} onStatus={setNewStatus} />
                           <View className="flex-row gap-2">
                             <TouchableOpacity onPress={() => handleAddItem(day)} disabled={savingItem || !newTitle.trim()}
                               className="flex-1 items-center rounded-lg bg-teal-500 py-2" style={{ opacity: savingItem || !newTitle.trim() ? 0.5 : 1 }}>

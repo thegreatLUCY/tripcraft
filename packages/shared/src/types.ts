@@ -30,10 +30,8 @@ export type ItineraryItem = {
   notes: string | null
   completed: boolean
   position: number
-  // Added by the itinerary type/status feature; optional until the
-  // columns + UI land everywhere.
-  type?: ItineraryItemType
-  status?: ActivityStatus
+  type: ItineraryItemType
+  status: ActivityStatus
 }
 
 // ─── External: Nominatim (OpenStreetMap) geocoding response ────────────────────

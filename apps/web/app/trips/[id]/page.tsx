@@ -23,7 +23,7 @@ export default async function TripDetailPage({ params }: Props) {
       .order('position'),
     supabase
       .from('itinerary_items')
-      .select('id, day, title, time, notes, completed, position')
+      .select('id, day, title, time, notes, completed, position, type, status')
       .eq('trip_id', id)
       .order('day')
       .order('position'),

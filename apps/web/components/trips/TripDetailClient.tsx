@@ -20,7 +20,10 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   type Destination, type Trip, type ItineraryItem, type NominatimResult,
+  type ItineraryItemType, type ActivityStatus,
   extractCity, formatDate, getDays, getDayLabel,
+  ITEM_TYPES, ACTIVITY_STATUSES, ITEM_TYPE_ICONS, ITEM_TYPE_LABELS,
+  ACTIVITY_STATUS_LABELS, ACTIVITY_STATUS_COLORS,
 } from '@tripcraft/shared'
 
 const TripMapView = dynamic(() => import('@/components/map/TripMapView'), { ssr: false })
@@ -109,6 +112,44 @@ function SortableDestinationItem(props: DestRowProps) {
   )
 }
 
+function ItemTypeStatusPicker({
+  type, status, onType, onStatus,
+}: {
+  type: ItineraryItemType
+  status: ActivityStatus
+  onType: (t: ItineraryItemType) => void
+  onStatus: (s: ActivityStatus) => void
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex gap-1">
+        {ITEM_TYPES.map(t => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => onType(t)}
+            className={`flex-1 rounded-md px-1.5 py-1 text-xs transition-colors ${type === t ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+          >
+            {ITEM_TYPE_ICONS[t]} {ITEM_TYPE_LABELS[t]}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-1">
+        {ACTIVITY_STATUSES.map(s => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onStatus(s)}
+            className={`flex-1 rounded-md px-1.5 py-1 text-xs transition-colors ${status === s ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+          >
+            {ACTIVITY_STATUS_LABELS[s]}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function TripDetailClient({
   trip,
   initialDestinations,
@@ -156,6 +197,8 @@ export default function TripDetailClient({
   const [newTitle, setNewTitle] = useState('')
   const [newTime, setNewTime] = useState('')
   const [newNotes, setNewNotes] = useState('')
+  const [newType, setNewType] = useState<ItineraryItemType>('activity')
+  const [newStatus, setNewStatus] = useState<ActivityStatus>('definite')
   const [savingItem, setSavingItem] = useState(false)
   const [itemError, setItemError] = useState<string | null>(null)
   const [deletingItem, setDeletingItem] = useState<string | null>(null)
@@ -163,6 +206,8 @@ export default function TripDetailClient({
   const [editItemTitle, setEditItemTitle] = useState('')
   const [editItemTime, setEditItemTime] = useState('')
   const [editItemNotes, setEditItemNotes] = useState('')
+  const [editItemType, setEditItemType] = useState<ItineraryItemType>('activity')
+  const [editItemStatus, setEditItemStatus] = useState<ActivityStatus>('definite')
   const [savingEditItem, setSavingEditItem] = useState(false)
 
   // ── Destination search ───────────────────────────────────────────────────────
@@ -286,14 +331,14 @@ export default function TripDetailClient({
     const dayItems = items.filter(i => i.day === day)
     const { data, error } = await supabase
       .from('itinerary_items')
-      .insert({ trip_id: trip.id, day, title: newTitle.trim(), time: newTime || null, notes: newNotes.trim() || null, completed: false, position: dayItems.length + 1, user_id: user!.id })
-      .select('id, day, title, time, notes, completed, position')
+      .insert({ trip_id: trip.id, day, title: newTitle.trim(), time: newTime || null, notes: newNotes.trim() || null, completed: false, position: dayItems.length + 1, type: newType, status: newStatus, user_id: user!.id })
+      .select('id, day, title, time, notes, completed, position, type, status')
       .single()
     if (error) {
       setItemError(error.message)
     } else if (data) {
       setItems(prev => [...prev, data])
-      setNewTitle(''); setNewTime(''); setNewNotes(''); setAddingToDay(null)
+      setNewTitle(''); setNewTime(''); setNewNotes(''); setNewType('activity'); setNewStatus('definite'); setAddingToDay(null)
     }
     setSavingItem(false)
   }
@@ -315,11 +360,11 @@ export default function TripDetailClient({
     setSavingEditItem(true)
     const { error } = await supabase
       .from('itinerary_items')
-      .update({ title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null })
+      .update({ title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null, type: editItemType, status: editItemStatus })
       .eq('id', editingItemId)
     if (!error) {
       setItems(prev => prev.map(i => i.id === editingItemId
-        ? { ...i, title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null }
+        ? { ...i, title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null, type: editItemType, status: editItemStatus }
         : i
       ))
       setEditingItemId(null)
@@ -507,6 +552,7 @@ export default function TripDetailClient({
                               <input value={editItemNotes} onChange={e => setEditItemNotes(e.target.value)}
                                 placeholder="Notes (optional)..."
                                 className="rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-ring" />
+                              <ItemTypeStatusPicker type={editItemType} status={editItemStatus} onType={setEditItemType} onStatus={setEditItemStatus} />
                               <div className="flex gap-1.5">
                                 <button onClick={handleSaveEditItem} disabled={savingEditItem || !editItemTitle.trim()}
                                   className="flex items-center gap-1 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50">
@@ -526,8 +572,14 @@ export default function TripDetailClient({
                               {item.time && (
                                 <span className="w-10 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{item.time}</span>
                               )}
-                              <span className={`flex-1 ${!item.time ? 'pl-10' : ''} ${item.completed ? 'text-muted-foreground line-through' : ''}`}>
+                              <span className="shrink-0" title={ITEM_TYPE_LABELS[item.type]}>{ITEM_TYPE_ICONS[item.type]}</span>
+                              <span className={`flex-1 ${item.completed ? 'text-muted-foreground line-through' : ''}`}>
                                 {item.title}
+                                {item.status !== 'definite' && (
+                                  <span className={`ml-1.5 text-[10px] font-medium ${ACTIVITY_STATUS_COLORS[item.status]}`}>
+                                    {ACTIVITY_STATUS_LABELS[item.status]}
+                                  </span>
+                                )}
                               </span>
 
                               {/* Reorder */}
@@ -543,7 +595,7 @@ export default function TripDetailClient({
                               </div>
 
                               {/* Edit — always visible */}
-                              <button onClick={() => { setEditingItemId(item.id); setEditItemTitle(item.title); setEditItemTime(item.time ?? ''); setEditItemNotes(item.notes ?? '') }}
+                              <button onClick={() => { setEditingItemId(item.id); setEditItemTitle(item.title); setEditItemTime(item.time ?? ''); setEditItemNotes(item.notes ?? ''); setEditItemType(item.type); setEditItemStatus(item.status) }}
                                 className="rounded p-1 text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground">
                                 <Pencil className="h-3 w-3" />
                               </button>
@@ -577,6 +629,7 @@ export default function TripDetailClient({
                       </div>
                       <input type="text" placeholder="Notes (optional)..." value={newNotes} onChange={e => setNewNotes(e.target.value)}
                         className="rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-ring" />
+                      <ItemTypeStatusPicker type={newType} status={newStatus} onType={setNewType} onStatus={setNewStatus} />
                       {itemError && <p className="text-xs text-destructive">{itemError}</p>}
                       <div className="flex gap-1.5">
                         <button onClick={() => handleAddItem(day)} disabled={savingItem || !newTitle.trim()}
