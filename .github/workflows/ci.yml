@@ -14,7 +14,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       # npm ci installs the exact locked tree: no peer re-resolution (so
@@ -27,9 +27,21 @@ jobs:
       - name: Shared package tests
         run: npm test --workspace @tripcraft/shared
 
+      - name: Lint web
+        run: npm run lint --workspace web
+
       - name: Typecheck mobile
         run: npx tsc --noEmit
         working-directory: apps/mobile
+
+      # Surfaces Expo native-dep drift — the bug class that caused the
+      # react-native-maps crash. Non-blocking: react-native-reanimated is a
+      # known, deliberate deviation (Reanimated 4 is a breaking upgrade
+      # needing device testing), so this reports drift without failing CI.
+      - name: Check Expo dependency compatibility
+        run: npx expo install --check
+        working-directory: apps/mobile
+        continue-on-error: true
 
       # `next build` also runs the TypeScript check and validates that the
       # @tripcraft/shared workspace package resolves under the bundler.

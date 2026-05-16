@@ -60,6 +60,7 @@ function SortableDestinationItem(props: DestRowProps) {
         <button
           {...attributes} {...listeners}
           onClick={e => e.stopPropagation()}
+          aria-label={`Reorder ${dest.city_name}`}
           className="cursor-grab touch-none text-muted-foreground/30 hover:text-muted-foreground active:cursor-grabbing"
         >
           <GripVertical className="h-4 w-4" />
@@ -74,6 +75,7 @@ function SortableDestinationItem(props: DestRowProps) {
         {/* Note toggle */}
         <button
           onClick={e => { e.stopPropagation(); props.onNoteToggle(dest.id, dest.notes ?? '') }}
+          aria-label={dest.notes ? `Edit note for ${dest.city_name}` : `Add note to ${dest.city_name}`}
           className="rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
         >
           <StickyNote className={`h-3.5 w-3.5 ${dest.notes ? 'text-primary' : 'text-muted-foreground'}`} />
@@ -83,6 +85,7 @@ function SortableDestinationItem(props: DestRowProps) {
         <button
           onClick={e => { e.stopPropagation(); props.onDelete(dest.id) }}
           disabled={deletingDest === dest.id}
+          aria-label={`Remove ${dest.city_name}`}
           className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 disabled:opacity-50"
         >
           {deletingDest === dest.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
@@ -438,10 +441,11 @@ export default function TripDetailClient({
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                <button onClick={() => setEditing(true)} className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground">
+                <button onClick={() => setEditing(true)} aria-label="Edit trip" className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground">
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
                 <button onClick={handleDeleteTrip} disabled={deletingTrip} onBlur={() => setConfirmDelete(false)}
+                  aria-label={confirmDelete ? 'Confirm delete trip' : 'Delete trip'}
                   className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${confirmDelete ? 'bg-destructive text-destructive-foreground' : 'text-muted-foreground hover:text-destructive'}`}>
                   {deletingTrip ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : confirmDelete ? 'Confirm delete' : <Trash2 className="h-3.5 w-3.5" />}
                 </button>
@@ -565,6 +569,8 @@ export default function TripDetailClient({
                             <div className="group flex items-center gap-1.5 text-sm">
                               {/* Done toggle */}
                               <button onClick={() => handleToggleDone(item.id, item.completed)}
+                                aria-label={item.completed ? `Mark ${item.title} not done` : `Mark ${item.title} done`}
+                                aria-pressed={item.completed}
                                 className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${item.completed ? 'border-primary bg-primary' : 'border-muted-foreground hover:border-primary'}`}>
                                 {item.completed && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
                               </button>
@@ -585,10 +591,12 @@ export default function TripDetailClient({
                               {/* Reorder */}
                               <div className="flex opacity-0 transition-opacity group-hover:opacity-100">
                                 <button onClick={() => handleReorderItem(item.id, day, 'up')} disabled={idx === 0}
+                                  aria-label={`Move ${item.title} up`}
                                   className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20">
                                   <ChevronUp className="h-3 w-3" />
                                 </button>
                                 <button onClick={() => handleReorderItem(item.id, day, 'down')} disabled={idx === dayItems.length - 1}
+                                  aria-label={`Move ${item.title} down`}
                                   className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20">
                                   <ChevronDown className="h-3 w-3" />
                                 </button>
@@ -596,12 +604,14 @@ export default function TripDetailClient({
 
                               {/* Edit — always visible */}
                               <button onClick={() => { setEditingItemId(item.id); setEditItemTitle(item.title); setEditItemTime(item.time ?? ''); setEditItemNotes(item.notes ?? ''); setEditItemType(item.type); setEditItemStatus(item.status) }}
+                                aria-label={`Edit ${item.title}`}
                                 className="rounded p-1 text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground">
                                 <Pencil className="h-3 w-3" />
                               </button>
 
                               {/* Delete */}
                               <button onClick={() => handleDeleteItem(item.id)} disabled={deletingItem === item.id}
+                                aria-label={`Delete ${item.title}`}
                                 className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 disabled:opacity-50">
                                 {deletingItem === item.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
                               </button>
