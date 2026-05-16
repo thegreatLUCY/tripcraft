@@ -90,6 +90,12 @@ export default function TripDetailScreen() {
   const [adding, setAdding] = useState<number | null>(null)
   const [deletingDest, setDeletingDest] = useState<string | null>(null)
 
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editStartDate, setEditStartDate] = useState('')
+  const [editEndDate, setEditEndDate] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+
   const [items, setItems] = useState<ItineraryItem[]>([])
   const [addingToDay, setAddingToDay] = useState<number | null>(null)
   const [newTitle, setNewTitle] = useState('')
@@ -193,6 +199,24 @@ export default function TripDetailScreen() {
     setDeletingItem(null)
   }
 
+  async function handleSaveEdit() {
+    if (!editTitle.trim()) return
+    if (editStartDate && editEndDate && editEndDate < editStartDate) {
+      Alert.alert('Invalid dates', 'End date cannot be before start date')
+      return
+    }
+    setSavingEdit(true)
+    const { error } = await supabase
+      .from('trips')
+      .update({ title: editTitle.trim(), start_date: editStartDate || null, end_date: editEndDate || null })
+      .eq('id', id)
+    if (!error) {
+      setTrip(prev => prev ? { ...prev, title: editTitle.trim(), start_date: editStartDate || null, end_date: editEndDate || null } : prev)
+      setEditing(false)
+    }
+    setSavingEdit(false)
+  }
+
   function handleDeleteTrip() {
     Alert.alert('Delete Trip', 'This will permanently delete this trip and all its destinations.', [
       { text: 'Cancel', style: 'cancel' },
@@ -231,19 +255,71 @@ export default function TripDetailScreen() {
           <TouchableOpacity onPress={() => router.replace('/')}>
             <Text className="text-xs text-neutral-400">← All trips</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleDeleteTrip}>
-            <Text className="text-xs text-neutral-400">🗑 Delete</Text>
-          </TouchableOpacity>
+          <View className="flex-row items-center gap-3">
+            {trip && !editing && (
+              <TouchableOpacity onPress={() => { setEditTitle(trip.title); setEditStartDate(trip.start_date ?? ''); setEditEndDate(trip.end_date ?? ''); setEditing(true) }}>
+                <Text className="text-xs text-neutral-400">✏️ Edit</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={handleDeleteTrip}>
+              <Text className="text-xs text-neutral-400">🗑 Delete</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         {trip ? (
-          <>
-            <Text className="text-lg font-bold text-neutral-900 dark:text-white">{trip.title}</Text>
-            {(trip.start_date || trip.end_date) && (
-              <Text className="mt-0.5 text-xs text-neutral-400">
-                {formatDate(trip.start_date)}{trip.start_date && trip.end_date ? ' → ' : ''}{formatDate(trip.end_date)}
-              </Text>
-            )}
-          </>
+          editing ? (
+            <View className="gap-2">
+              <TextInput
+                autoFocus
+                value={editTitle}
+                onChangeText={setEditTitle}
+                placeholder="Trip name"
+                placeholderTextColor="#a1a1aa"
+                className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm font-semibold text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+              />
+              <View className="flex-row gap-2">
+                <TextInput
+                  value={editStartDate}
+                  onChangeText={setEditStartDate}
+                  placeholder="Start YYYY-MM-DD"
+                  placeholderTextColor="#a1a1aa"
+                  className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                />
+                <TextInput
+                  value={editEndDate}
+                  onChangeText={setEditEndDate}
+                  placeholder="End YYYY-MM-DD"
+                  placeholderTextColor="#a1a1aa"
+                  className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                />
+              </View>
+              <View className="flex-row gap-2">
+                <TouchableOpacity
+                  onPress={handleSaveEdit}
+                  disabled={savingEdit || !editTitle.trim()}
+                  className="flex-1 items-center rounded-xl bg-teal-500 py-2"
+                  style={{ opacity: savingEdit || !editTitle.trim() ? 0.5 : 1 }}
+                >
+                  {savingEdit ? <ActivityIndicator size="small" color="white" /> : <Text className="text-xs font-semibold text-white">Save</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setEditing(false)}
+                  className="items-center rounded-xl border border-neutral-200 px-4 py-2 dark:border-neutral-700"
+                >
+                  <Text className="text-xs text-neutral-500">Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <>
+              <Text className="text-lg font-bold text-neutral-900 dark:text-white">{trip.title}</Text>
+              {(trip.start_date || trip.end_date) && (
+                <Text className="mt-0.5 text-xs text-neutral-400">
+                  {formatDate(trip.start_date)}{trip.start_date && trip.end_date ? ' → ' : ''}{formatDate(trip.end_date)}
+                </Text>
+              )}
+            </>
+          )
         ) : <ActivityIndicator size="small" color="#0d9488" />}
       </View>
 
