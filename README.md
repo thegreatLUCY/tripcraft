@@ -10,13 +10,13 @@ A map-first travel planning app for web and mobile. Plan trips, pin destinations
 
 > Add screenshots to a `screenshots/` folder at the root and update the paths below.
 
-| Home | Trip Detail | Itinerary |
+| Home | Destinations | Itinerary |
 |------|-------------|-----------|
-| ![Home](screenshots/home.png) | ![Trip detail](screenshots/trip-detail.png) | ![Itinerary](screenshots/itinerary.png) |
+| ![Home](screenshots/web%20home.png) | ![Destinations](screenshots/Web%20destination.png) | ![Itinerary](screenshots/Web%20itenerary.png) |
 
-| Mobile Home | Mobile Trip |
-|-------------|-------------|
-| ![Mobile home](screenshots/mobile-home.png) | ![Mobile trip](screenshots/mobile-trip.png) |
+| Mobile Home | Mobile Destinations | Mobile Itinerary |
+|-------------|-------------|-------------|
+| ![Mobile home](screenshots/mobile%20home.jpeg) | ![Mobile destinations](screenshots/Mobile%20Destination.jpeg) | ![Mobile itinerary](screenshots/Mobile%20Itenerary.jpeg) |
 
 ---
 
