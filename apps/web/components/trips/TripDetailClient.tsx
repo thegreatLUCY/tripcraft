@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, MapPin, Loader2, X, Trash2, Map, CalendarDays, Plus } from 'lucide-react'
+import { ArrowLeft, MapPin, Loader2, X, Trash2, Map, CalendarDays, Plus, Pencil } from 'lucide-react'
 
 const TripMapView = dynamic(() => import('@/components/map/TripMapView'), { ssr: false })
 
@@ -90,6 +90,17 @@ export default function TripDetailClient({
   initialDestinations: Destination[]
   initialItems: ItineraryItem[]
 }) {
+  // ── Trip local state (mutable after edits) ──────────────────────────────────
+  const [tripData, setTripData] = useState(trip)
+
+  // ── Edit trip state ──────────────────────────────────────────────────────────
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState(trip.title)
+  const [editStartDate, setEditStartDate] = useState(trip.start_date ?? '')
+  const [editEndDate, setEditEndDate] = useState(trip.end_date ?? '')
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
   // ── Tab ─────────────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<'map' | 'itinerary'>('map')
 
@@ -171,6 +182,27 @@ export default function TripDetailClient({
     else setDeletingTrip(false)
   }
 
+  async function handleSaveEdit() {
+    if (!editTitle.trim()) return
+    if (editStartDate && editEndDate && editEndDate < editStartDate) {
+      setEditError('End date cannot be before start date')
+      return
+    }
+    setSavingEdit(true)
+    setEditError(null)
+    const { error } = await supabase
+      .from('trips')
+      .update({ title: editTitle.trim(), start_date: editStartDate || null, end_date: editEndDate || null })
+      .eq('id', trip.id)
+    if (error) {
+      setEditError(error.message)
+    } else {
+      setTripData(prev => ({ ...prev, title: editTitle.trim(), start_date: editStartDate || null, end_date: editEndDate || null }))
+      setEditing(false)
+    }
+    setSavingEdit(false)
+  }
+
   async function handleAddItem(day: number) {
     if (!newTitle.trim()) return
     setSavingItem(true)
@@ -200,7 +232,7 @@ export default function TripDetailClient({
     setDeletingItem(null)
   }
 
-  const days = getDays(trip, items)
+  const days = getDays(tripData, items)
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -217,30 +249,80 @@ export default function TripDetailClient({
             <ArrowLeft className="h-3.5 w-3.5" />
             All trips
           </Link>
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold">{trip.title}</h1>
-              {(trip.start_date || trip.end_date) && (
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {formatDate(trip.start_date)}
-                  {trip.start_date && trip.end_date && ' → '}
-                  {formatDate(trip.end_date)}
-                </p>
-              )}
+          {editing ? (
+            <div className="flex flex-col gap-2">
+              <input
+                autoFocus
+                type="text"
+                value={editTitle}
+                onChange={e => setEditTitle(e.target.value)}
+                className="w-full rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-ring"
+              />
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={editStartDate}
+                  onChange={e => setEditStartDate(e.target.value)}
+                  className="flex-1 rounded-lg border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                />
+                <input
+                  type="date"
+                  value={editEndDate}
+                  onChange={e => setEditEndDate(e.target.value)}
+                  className="flex-1 rounded-lg border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+                />
+              </div>
+              {editError && <p className="text-xs text-destructive">{editError}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={savingEdit || !editTitle.trim()}
+                  className="flex items-center gap-1 rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                >
+                  {savingEdit ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setEditing(false); setEditError(null); setEditTitle(tripData.title); setEditStartDate(tripData.start_date ?? ''); setEditEndDate(tripData.end_date ?? '') }}
+                  className="rounded-md px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-            <button
-              onClick={handleDeleteTrip}
-              disabled={deletingTrip}
-              onBlur={() => setConfirmDelete(false)}
-              className={`shrink-0 rounded-lg px-2 py-1 text-xs font-medium transition-colors ${
-                confirmDelete
-                  ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-                  : 'text-muted-foreground hover:text-destructive'
-              }`}
-            >
-              {deletingTrip ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : confirmDelete ? 'Confirm delete' : <Trash2 className="h-3.5 w-3.5" />}
-            </button>
-          </div>
+          ) : (
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold">{tripData.title}</h1>
+                {(tripData.start_date || tripData.end_date) && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {formatDate(tripData.start_date)}
+                    {tripData.start_date && tripData.end_date && ' → '}
+                    {formatDate(tripData.end_date)}
+                  </p>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  onClick={() => setEditing(true)}
+                  className="rounded-lg p-1.5 text-muted-foreground hover:text-foreground"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={handleDeleteTrip}
+                  disabled={deletingTrip}
+                  onBlur={() => setConfirmDelete(false)}
+                  className={`rounded-lg px-2 py-1 text-xs font-medium transition-colors ${
+                    confirmDelete
+                      ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                      : 'text-muted-foreground hover:text-destructive'
+                  }`}
+                >
+                  {deletingTrip ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : confirmDelete ? 'Confirm delete' : <Trash2 className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Tab switcher */}
@@ -335,7 +417,7 @@ export default function TripDetailClient({
                 <div key={day} className={`px-4 py-3 ${dayIdx < days.length - 1 ? 'border-b border-border' : ''}`}>
                   {/* Day header */}
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-foreground">{getDayLabel(trip, day)}</span>
+                    <span className="text-xs font-semibold text-foreground">{getDayLabel(tripData, day)}</span>
                     <button
                       onClick={() => { setAddingToDay(addingToDay === day ? null : day); setNewTitle(''); setNewTime('') }}
                       className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
