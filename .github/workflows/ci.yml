@@ -17,9 +17,12 @@ jobs:
           node-version: 20
           cache: npm
 
-      # Mobile has fragile peer deps; matches how the lockfile was generated.
+      # npm ci installs the exact locked tree: no peer re-resolution (so
+      # mobile's fragile peers don't block) and correct per-platform native
+      # binaries (e.g. lightningcss linux). `npm install --legacy-peer-deps`
+      # skips optional platform deps here — npm/cli#4828.
       - name: Install
-        run: npm install --legacy-peer-deps
+        run: npm ci
 
       - name: Shared package tests
         run: npm test --workspace @tripcraft/shared
