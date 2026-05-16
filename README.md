@@ -208,9 +208,3 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 - [ ] Packing list per trip
 - [ ] Budget tracker
 - [ ] Integration with flights and hotels
-
----
-
-## License
-
-MIT
