@@ -13,28 +13,27 @@ type Destination = {
   lng: number
 }
 
-// Creates a numbered teal circle pin — no image files needed
-function createPin(number: number) {
+function createPin(number: number, highlighted = false) {
   return L.divIcon({
     className: '',
     iconSize: [32, 32],
     iconAnchor: [16, 16],
     html: `<div style="
       width:32px;height:32px;
-      background:#0d9488;
+      background:${highlighted ? '#0f766e' : '#0d9488'};
       border-radius:50%;
-      border:2.5px solid white;
+      border:${highlighted ? '3px' : '2.5px'} solid white;
       display:flex;align-items:center;justify-content:center;
       color:white;font-size:13px;font-weight:700;
-      box-shadow:0 2px 6px rgba(0,0,0,0.25)
+      box-shadow:0 2px ${highlighted ? '10px' : '6px'} rgba(0,0,0,${highlighted ? '0.4' : '0.25'});
+      transform:${highlighted ? 'scale(1.2)' : 'scale(1)'};
+      transition:all 0.2s;
     ">${number}</div>`,
   })
 }
 
-// This child component accesses the map instance to fit all pins in view
 function FitBounds({ destinations }: { destinations: Destination[] }) {
   const map = useMap()
-
   useEffect(() => {
     if (destinations.length === 0) return
     if (destinations.length === 1) {
@@ -44,11 +43,26 @@ function FitBounds({ destinations }: { destinations: Destination[] }) {
     const bounds = L.latLngBounds(destinations.map(d => [d.lat, d.lng]))
     map.fitBounds(bounds, { padding: [60, 60] })
   }, [destinations, map])
-
   return null
 }
 
-export default function TripMapView({ destinations }: { destinations: Destination[] }) {
+function ZoomTo({ destinations, targetId }: { destinations: Destination[], targetId: string | null }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!targetId) return
+    const dest = destinations.find(d => d.id === targetId)
+    if (dest) map.flyTo([dest.lat, dest.lng], 12, { duration: 1 })
+  }, [targetId])
+  return null
+}
+
+export default function TripMapView({
+  destinations,
+  zoomToId = null,
+}: {
+  destinations: Destination[]
+  zoomToId?: string | null
+}) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => { setMounted(true) }, [])
   if (!mounted) return null
@@ -66,16 +80,15 @@ export default function TripMapView({ destinations }: { destinations: Destinatio
         maxZoom={19}
       />
       <FitBounds destinations={destinations} />
+      <ZoomTo destinations={destinations} targetId={zoomToId} />
       {destinations.map((dest, index) => (
         <Marker
           key={dest.id}
           position={[dest.lat, dest.lng]}
-          icon={createPin(index + 1)}
+          icon={createPin(index + 1, dest.id === zoomToId)}
         >
           <Popup>
-            <strong>{dest.city_name}</strong>
-            <br />
-            {dest.country_name}
+            <strong>{dest.city_name}</strong><br />{dest.country_name}
           </Popup>
         </Marker>
       ))}

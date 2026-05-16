@@ -18,15 +18,15 @@ export default async function TripDetailPage({ params }: Props) {
       .single(),
     supabase
       .from('trip_destinations')
-      .select('id, city_name, country_name, lat, lng')
+      .select('id, city_name, country_name, lat, lng, notes, position')
       .eq('trip_id', id)
-      .order('created_at'),
+      .order('position'),
     supabase
       .from('itinerary_items')
-      .select('id, day, title, time')
+      .select('id, day, title, time, notes, completed, position')
       .eq('trip_id', id)
       .order('day')
-      .order('created_at'),
+      .order('position'),
   ])
 
   if (!trip) notFound()
