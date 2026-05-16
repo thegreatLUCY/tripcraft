@@ -16,8 +16,15 @@ export default function RootLayout() {
   const segments = useSegments()
 
   useEffect(() => {
-    // Get the current session on app start
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    // Get the current session on app start; clear stale tokens if refresh fails
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (error) {
+        supabase.auth.signOut()
+        setSession(null)
+      } else {
+        setSession(data.session)
+      }
+    })
 
     // Keep session in sync when the user logs in or out
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
