@@ -7,8 +7,17 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, MapPin, Loader2, X, Trash2, Map, CalendarDays,
-  Plus, Pencil, ChevronUp, ChevronDown, Check, StickyNote,
+  Plus, Pencil, ChevronUp, ChevronDown, Check, StickyNote, GripVertical, // ChevronUp/Down still used for itinerary reorder
 } from 'lucide-react'
+import {
+  DndContext, closestCenter, PointerSensor, KeyboardSensor,
+  useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, verticalListSortingStrategy, useSortable,
+  sortableKeyboardCoordinates, arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 const TripMapView = dynamic(() => import('@/components/map/TripMapView'), { ssr: false })
 
@@ -51,6 +60,90 @@ type NominatimResult = {
     municipality?: string
     country?: string
   }
+}
+
+type DestRowProps = {
+  dest: Destination
+  index: number
+  total: number
+  zoomToId: string | null
+  deletingDest: string | null
+  editingDestNoteId: string | null
+  destNoteValue: string
+  savingDestNote: boolean
+  onZoom: (id: string) => void
+  onDelete: (id: string) => void
+  onNoteToggle: (id: string, current: string) => void
+  onNoteChange: (v: string) => void
+  onNoteSave: (id: string) => void
+  onNoteCancel: () => void
+}
+
+function SortableDestinationItem(props: DestRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: props.dest.id })
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
+  const { dest, index, zoomToId, deletingDest, editingDestNoteId, destNoteValue, savingDestNote } = props
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div
+        className={`group flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1.5 transition-colors hover:bg-accent/40 ${zoomToId === dest.id ? 'bg-accent/40' : ''}`}
+        onClick={() => props.onZoom(dest.id)}
+      >
+        {/* Drag handle */}
+        <button
+          {...attributes} {...listeners}
+          onClick={e => e.stopPropagation()}
+          className="cursor-grab touch-none text-muted-foreground/30 hover:text-muted-foreground active:cursor-grabbing"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+          {index + 1}
+        </span>
+        <span className="flex-1 text-sm font-medium">{dest.city_name}</span>
+        <span className="text-xs text-muted-foreground">{dest.country_name}</span>
+
+        {/* Note toggle */}
+        <button
+          onClick={e => { e.stopPropagation(); props.onNoteToggle(dest.id, dest.notes ?? '') }}
+          className="rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100"
+        >
+          <StickyNote className={`h-3.5 w-3.5 ${dest.notes ? 'text-primary' : 'text-muted-foreground'}`} />
+        </button>
+
+        {/* Delete */}
+        <button
+          onClick={e => { e.stopPropagation(); props.onDelete(dest.id) }}
+          disabled={deletingDest === dest.id}
+          className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 disabled:opacity-50"
+        >
+          {deletingDest === dest.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+
+      {/* Note display / edit */}
+      {dest.notes && editingDestNoteId !== dest.id && (
+        <p className="mb-0.5 ml-8 text-xs italic text-muted-foreground">{dest.notes}</p>
+      )}
+      {editingDestNoteId === dest.id && (
+        <div className="mb-1 ml-8 flex items-center gap-1.5">
+          <input
+            autoFocus value={destNoteValue} onChange={e => props.onNoteChange(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && props.onNoteSave(dest.id)}
+            placeholder="Add a note..."
+            className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button onClick={() => props.onNoteSave(dest.id)} disabled={savingDestNote}
+            className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-50">
+            {savingDestNote ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+          </button>
+          <button onClick={props.onNoteCancel} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function extractCity(r: NominatimResult) {
@@ -103,6 +196,12 @@ export default function TripDetailClient({
   const [editError, setEditError] = useState<string | null>(null)
   const [deletingTrip, setDeletingTrip] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+
+  // ── Drag-to-reorder sensors ──────────────────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   // ── Destinations ─────────────────────────────────────────────────────────────
   const [destinations, setDestinations] = useState<Destination[]>(initialDestinations)
@@ -224,21 +323,14 @@ export default function TripDetailClient({
     setSavingDestNote(false)
   }
 
-  async function handleReorderDest(destId: string, dir: 'up' | 'down') {
-    const idx = sortedDests.findIndex(d => d.id === destId)
-    const swapIdx = dir === 'up' ? idx - 1 : idx + 1
-    if (swapIdx < 0 || swapIdx >= sortedDests.length) return
-    const a = sortedDests[idx]
-    const b = sortedDests[swapIdx]
-    await Promise.all([
-      supabase.from('trip_destinations').update({ position: b.position }).eq('id', a.id),
-      supabase.from('trip_destinations').update({ position: a.position }).eq('id', b.id),
-    ])
-    setDestinations(prev => prev.map(d => {
-      if (d.id === a.id) return { ...d, position: b.position }
-      if (d.id === b.id) return { ...d, position: a.position }
-      return d
-    }))
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = sortedDests.findIndex(d => d.id === active.id)
+    const newIndex = sortedDests.findIndex(d => d.id === over.id)
+    const reordered = arrayMove(sortedDests, oldIndex, newIndex).map((d, i) => ({ ...d, position: i + 1 }))
+    setDestinations(reordered)
+    await Promise.all(reordered.map((d, i) => supabase.from('trip_destinations').update({ position: i + 1 }).eq('id', d.id)))
   }
 
   // ── Itinerary handlers ────────────────────────────────────────────────────────
@@ -382,62 +474,29 @@ export default function TripDetailClient({
           <>
             {sortedDests.length > 0 && (
               <div className="flex max-h-56 flex-col overflow-y-auto rounded-2xl border border-border bg-background/90 px-3 py-2 shadow-xl backdrop-blur-md">
-                {sortedDests.map((dest, i) => (
-                  <div key={dest.id}>
-                    <div
-                      className={`group flex cursor-pointer items-center gap-2 rounded-lg px-1 py-1.5 transition-colors hover:bg-accent/40 ${zoomToId === dest.id ? 'bg-accent/40' : ''}`}
-                      onClick={() => setZoomToId(zoomToId === dest.id ? null : dest.id)}
-                    >
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
-                        {i + 1}
-                      </span>
-                      <span className="flex-1 text-sm font-medium">{dest.city_name}</span>
-                      <span className="text-xs text-muted-foreground">{dest.country_name}</span>
-
-                      {/* Reorder */}
-                      <div className="flex flex-col opacity-0 transition-opacity group-hover:opacity-100">
-                        <button onClick={e => { e.stopPropagation(); handleReorderDest(dest.id, 'up') }} disabled={i === 0}
-                          className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20">
-                          <ChevronUp className="h-3 w-3" />
-                        </button>
-                        <button onClick={e => { e.stopPropagation(); handleReorderDest(dest.id, 'down') }} disabled={i === sortedDests.length - 1}
-                          className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-20">
-                          <ChevronDown className="h-3 w-3" />
-                        </button>
-                      </div>
-
-                      {/* Note toggle */}
-                      <button onClick={e => { e.stopPropagation(); setEditingDestNoteId(editingDestNoteId === dest.id ? null : dest.id); setDestNoteValue(dest.notes ?? '') }}
-                        className="rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                        <StickyNote className={`h-3.5 w-3.5 ${dest.notes ? 'text-primary' : 'text-muted-foreground'}`} />
-                      </button>
-
-                      {/* Delete */}
-                      <button onClick={e => { e.stopPropagation(); handleDeleteDest(dest.id) }} disabled={deletingDest === dest.id}
-                        className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 disabled:opacity-50">
-                        {deletingDest === dest.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                      </button>
-                    </div>
-
-                    {/* Note display / edit */}
-                    {dest.notes && editingDestNoteId !== dest.id && (
-                      <p className="mb-0.5 ml-7 text-xs italic text-muted-foreground">{dest.notes}</p>
-                    )}
-                    {editingDestNoteId === dest.id && (
-                      <div className="mb-1 ml-7 flex items-center gap-1.5">
-                        <input autoFocus value={destNoteValue} onChange={e => setDestNoteValue(e.target.value)}
-                          onKeyDown={e => e.key === 'Enter' && handleSaveDestNote(dest.id)}
-                          placeholder="Add a note..."
-                          className="flex-1 rounded-md border border-input bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-ring" />
-                        <button onClick={() => handleSaveDestNote(dest.id)} disabled={savingDestNote}
-                          className="rounded-md bg-primary px-2 py-1 text-xs text-primary-foreground disabled:opacity-50">
-                          {savingDestNote ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
-                        </button>
-                        <button onClick={() => setEditingDestNoteId(null)} className="text-xs text-muted-foreground hover:text-foreground">✕</button>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                  <SortableContext items={sortedDests.map(d => d.id)} strategy={verticalListSortingStrategy}>
+                    {sortedDests.map((dest, i) => (
+                      <SortableDestinationItem
+                        key={dest.id}
+                        dest={dest}
+                        index={i}
+                        total={sortedDests.length}
+                        zoomToId={zoomToId}
+                        deletingDest={deletingDest}
+                        editingDestNoteId={editingDestNoteId}
+                        destNoteValue={destNoteValue}
+                        savingDestNote={savingDestNote}
+                        onZoom={id => setZoomToId(zoomToId === id ? null : id)}
+                        onDelete={handleDeleteDest}
+                        onNoteToggle={(id, current) => { setEditingDestNoteId(editingDestNoteId === id ? null : id); setDestNoteValue(current) }}
+                        onNoteChange={setDestNoteValue}
+                        onNoteSave={handleSaveDestNote}
+                        onNoteCancel={() => setEditingDestNoteId(null)}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
               </div>
             )}
 
@@ -536,9 +595,9 @@ export default function TripDetailClient({
                                 </button>
                               </div>
 
-                              {/* Edit */}
+                              {/* Edit — always visible */}
                               <button onClick={() => { setEditingItemId(item.id); setEditItemTitle(item.title); setEditItemTime(item.time ?? ''); setEditItemNotes(item.notes ?? '') }}
-                                className="rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100">
+                                className="rounded p-1 text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground">
                                 <Pencil className="h-3 w-3" />
                               </button>
 
