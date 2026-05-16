@@ -4,18 +4,7 @@ import { Link, useRouter } from 'expo-router'
 import MapView, { UrlTile } from 'react-native-maps'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../lib/supabase'
-
-type Trip = {
-  id: string
-  title: string
-  start_date: string | null
-  end_date: string | null
-}
-
-function formatDate(date: string | null) {
-  if (!date) return null
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
+import { type Trip, formatDate } from '@tripcraft/shared'
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets()

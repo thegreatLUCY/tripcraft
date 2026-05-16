@@ -4,14 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { useEffect, useState } from 'react'
 import 'leaflet/dist/leaflet.css'
-
-type Destination = {
-  id: string
-  city_name: string
-  country_name: string
-  lat: number
-  lng: number
-}
+import type { Destination } from '@tripcraft/shared'
 
 function createPin(number: number, highlighted = false) {
   return L.divIcon({

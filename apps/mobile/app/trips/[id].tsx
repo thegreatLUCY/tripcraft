@@ -7,75 +7,10 @@ import MapView, { Marker, UrlTile } from 'react-native-maps'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../../lib/supabase'
-
-type Destination = {
-  id: string
-  city_name: string
-  country_name: string
-  lat: number
-  lng: number
-  notes: string | null
-  position: number
-}
-
-type Trip = {
-  id: string
-  title: string
-  start_date: string | null
-  end_date: string | null
-}
-
-type ItineraryItem = {
-  id: string
-  day: number
-  title: string
-  time: string | null
-  notes: string | null
-  completed: boolean
-  position: number
-}
-
-type NominatimResult = {
-  place_id: number
-  display_name: string
-  lat: string
-  lon: string
-  address: {
-    city?: string
-    town?: string
-    village?: string
-    municipality?: string
-    country?: string
-  }
-}
-
-function extractCity(r: NominatimResult) {
-  return r.address.city ?? r.address.town ?? r.address.municipality ?? r.address.village ?? r.display_name.split(',')[0]
-}
-
-function formatDate(date: string | null) {
-  if (!date) return null
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function getDays(trip: Trip | null, items: ItineraryItem[]): number[] {
-  if (trip?.start_date && trip?.end_date) {
-    const start = new Date(trip.start_date + 'T00:00')
-    const end = new Date(trip.end_date + 'T00:00')
-    const count = Math.floor((end.getTime() - start.getTime()) / 86_400_000) + 1
-    return Array.from({ length: Math.min(count, 30) }, (_, i) => i + 1)
-  }
-  const existing = [...new Set(items.map(i => i.day))].sort((a, b) => a - b)
-  const next = existing.length > 0 ? Math.max(...existing) + 1 : 1
-  return [...existing, next]
-}
-
-function getDayLabel(trip: Trip | null, day: number): string {
-  if (!trip?.start_date) return `Day ${day}`
-  const date = new Date(trip.start_date + 'T00:00')
-  date.setDate(date.getDate() + day - 1)
-  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-}
+import {
+  type Destination, type Trip, type ItineraryItem, type NominatimResult,
+  extractCity, formatDate, getDays, getDayLabel,
+} from '@tripcraft/shared'
 
 export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()

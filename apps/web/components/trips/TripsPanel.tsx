@@ -2,22 +2,7 @@ import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { Map, Plus, Sparkles, Users, Globe } from 'lucide-react'
-
-type Trip = {
-  id: string
-  title: string
-  start_date: string | null
-  end_date: string | null
-}
-
-function formatDate(date: string | null) {
-  if (!date) return null
-  return new Date(date).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  })
-}
+import { type Trip, formatDate } from '@tripcraft/shared'
 
 export default function TripsPanel({ trips }: { trips: Trip[] }) {
   // ── Empty state — no trips yet ──────────────────────────────────────────────

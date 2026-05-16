@@ -1,6 +1,10 @@
 {
   "name": "travel-planner",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev:web": "npm run dev --prefix apps/web",
     "dev:mobile": "npm run start --prefix apps/mobile",
