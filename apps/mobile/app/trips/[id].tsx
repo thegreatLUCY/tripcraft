@@ -170,8 +170,8 @@ export default function TripDetailScreen() {
 
   async function handleDeleteDest(destId: string) {
     setDeletingDest(destId)
-    const { error } = await supabase.from('trip_destinations').delete().eq('id', destId)
-    if (!error) setDestinations(prev => prev.filter(d => d.id !== destId))
+    const { data, error } = await supabase.from('trip_destinations').delete().eq('id', destId).select('id')
+    if (!error && data && data.length > 0) setDestinations(prev => prev.filter(d => d.id !== destId))
     setDeletingDest(null)
   }
 
