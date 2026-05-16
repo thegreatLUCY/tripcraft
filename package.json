@@ -12,5 +12,10 @@
   },
   "engines": {
     "node": ">=20.0.0"
+  },
+  "comment": "react pinned to 19.1.0 workspace-wide: react-native@0.81.5 bundles react-native-renderer@19.1.0 and requires an EXACT match or the mobile app hard-crashes.",
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
   }
 }
