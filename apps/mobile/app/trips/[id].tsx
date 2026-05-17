@@ -199,6 +199,7 @@ export default function TripDetailScreen() {
     setDeletingDest(destId)
     const { data, error } = await supabase.from('trip_destinations').delete().eq('id', destId).select('id')
     if (!error && data && data.length > 0) setDestinations(prev => prev.filter(d => d.id !== destId))
+    else Alert.alert('Something went wrong', 'Could not remove that destination.')
     setDeletingDest(null)
   }
 
@@ -208,6 +209,8 @@ export default function TripDetailScreen() {
     if (!error) {
       setDestinations(prev => prev.map(d => d.id === destId ? { ...d, notes: destNoteValue.trim() || null } : d))
       setEditingDestNoteId(null)
+    } else {
+      Alert.alert('Something went wrong', 'Could not save the note.')
     }
     setSavingDestNote(false)
   }
@@ -229,7 +232,7 @@ export default function TripDetailScreen() {
       supabase.from('trip_destinations').update({ position: a.position }).eq('id', b.id).select('id'),
     ])
     const failed = results.some(r => r.error || !r.data || r.data.length === 0)
-    if (failed) setDestinations(previous) // roll back so UI matches the DB
+    if (failed) { setDestinations(previous); Alert.alert('Something went wrong', 'Could not save the new order.') }
   }
 
   // ── Itinerary handlers ────────────────────────────────────────────────────────
@@ -253,12 +256,14 @@ export default function TripDetailScreen() {
     setDeletingItem(itemId)
     const { error } = await supabase.from('itinerary_items').delete().eq('id', itemId)
     if (!error) setItems(prev => prev.filter(i => i.id !== itemId))
+    else Alert.alert('Something went wrong', 'Could not delete that activity.')
     setDeletingItem(null)
   }
 
   async function handleToggleDone(itemId: string, completed: boolean) {
     const { error } = await supabase.from('itinerary_items').update({ completed: !completed }).eq('id', itemId)
     if (!error) setItems(prev => prev.map(i => i.id === itemId ? { ...i, completed: !completed } : i))
+    else Alert.alert('Something went wrong', 'Could not update that activity.')
   }
 
   async function handleSaveEditItem() {
@@ -274,6 +279,8 @@ export default function TripDetailScreen() {
         : i
       ))
       setEditingItemId(null)
+    } else {
+      Alert.alert('Something went wrong', 'Could not save your changes.')
     }
     setSavingEditItem(false)
   }
@@ -296,7 +303,7 @@ export default function TripDetailScreen() {
       supabase.from('itinerary_items').update({ position: a.position }).eq('id', b.id).select('id'),
     ])
     const failed = results.some(r => r.error || !r.data || r.data.length === 0)
-    if (failed) setItems(previous) // roll back so UI matches the DB
+    if (failed) { setItems(previous); Alert.alert('Something went wrong', 'Could not save the new order.') }
   }
 
   return (

@@ -18,6 +18,7 @@ import {
   sortableKeyboardCoordinates, arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useToast } from '@/components/ui/toast'
 import {
   type Destination, type Trip, type ItineraryItem, type NominatimResult,
   type ItineraryItemType, type ActivityStatus,
@@ -164,6 +165,7 @@ export default function TripDetailClient({
 }) {
   const [tab, setTab] = useState<'map' | 'itinerary'>('map')
   const router = useRouter()
+  const toast = useToast()
 
   // ── Trip ────────────────────────────────────────────────────────────────────
   const [tripData, setTripData] = useState(trip)
@@ -260,7 +262,7 @@ export default function TripDetailClient({
     setDeletingTrip(true)
     const { error } = await supabase.from('trips').delete().eq('id', trip.id)
     if (!error) router.push('/')
-    else setDeletingTrip(false)
+    else { setDeletingTrip(false); toast('Could not delete the trip') }
   }
 
   // ── Destination handlers ──────────────────────────────────────────────────────
@@ -290,6 +292,7 @@ export default function TripDetailClient({
     setDeletingDest(destId)
     const { data, error } = await supabase.from('trip_destinations').delete().eq('id', destId).select('id')
     if (!error && data && data.length > 0) setDestinations(prev => prev.filter(d => d.id !== destId))
+    else toast('Could not remove that destination')
     setDeletingDest(null)
   }
 
@@ -302,6 +305,8 @@ export default function TripDetailClient({
     if (!error) {
       setDestinations(prev => prev.map(d => d.id === destId ? { ...d, notes: destNoteValue.trim() || null } : d))
       setEditingDestNoteId(null)
+    } else {
+      toast('Could not save the note')
     }
     setSavingDestNote(false)
   }
@@ -322,7 +327,7 @@ export default function TripDetailClient({
       )
     )
     const failed = results.some(r => r.error || !r.data || r.data.length === 0)
-    if (failed) setDestinations(previous) // roll back so UI matches the DB
+    if (failed) { setDestinations(previous); toast('Could not save the new order') } // roll back so UI matches the DB
   }
 
   // ── Itinerary handlers ────────────────────────────────────────────────────────
@@ -350,12 +355,14 @@ export default function TripDetailClient({
     setDeletingItem(itemId)
     const { error } = await supabase.from('itinerary_items').delete().eq('id', itemId)
     if (!error) setItems(prev => prev.filter(i => i.id !== itemId))
+    else toast('Could not delete that activity')
     setDeletingItem(null)
   }
 
   async function handleToggleDone(itemId: string, completed: boolean) {
     const { error } = await supabase.from('itinerary_items').update({ completed: !completed }).eq('id', itemId)
     if (!error) setItems(prev => prev.map(i => i.id === itemId ? { ...i, completed: !completed } : i))
+    else toast('Could not update that activity')
   }
 
   async function handleSaveEditItem() {
@@ -371,6 +378,8 @@ export default function TripDetailClient({
         : i
       ))
       setEditingItemId(null)
+    } else {
+      toast('Could not save your changes')
     }
     setSavingEditItem(false)
   }
@@ -393,7 +402,7 @@ export default function TripDetailClient({
       supabase.from('itinerary_items').update({ position: a.position }).eq('id', b.id).select('id'),
     ])
     const failed = results.some(r => r.error || !r.data || r.data.length === 0)
-    if (failed) setItems(previous) // roll back so UI matches the DB
+    if (failed) { setItems(previous); toast('Could not save the new order') } // roll back so UI matches the DB
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
