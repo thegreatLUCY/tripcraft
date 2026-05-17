@@ -25,6 +25,9 @@ import {
   extractCity, formatDate, getDays, getDayLabel,
   ITEM_TYPES, ACTIVITY_STATUSES, ITEM_TYPE_ICONS, ITEM_TYPE_LABELS,
   ACTIVITY_STATUS_LABELS, ACTIVITY_STATUS_COLORS,
+  updateTrip, deleteTrip, addDestination, deleteDestination,
+  updateDestinationNote, reorderDestinations, addItem, deleteItem,
+  setItemCompleted, updateItem, swapItemPositions,
 } from '@tripcraft/shared'
 
 const TripMapView = dynamic(() => import('@/components/map/TripMapView'), { ssr: false })
@@ -244,15 +247,13 @@ export default function TripDetailClient({
     }
     setSavingEdit(true)
     setEditError(null)
-    const { error } = await supabase
-      .from('trips')
-      .update({ title: editTitle.trim(), start_date: editStartDate || null, end_date: editEndDate || null })
-      .eq('id', trip.id)
-    if (error) {
-      setEditError(error.message)
-    } else {
-      setTripData(prev => ({ ...prev, title: editTitle.trim(), start_date: editStartDate || null, end_date: editEndDate || null }))
+    const patch = { title: editTitle.trim(), start_date: editStartDate || null, end_date: editEndDate || null }
+    const r = await updateTrip(supabase, trip.id, patch)
+    if (r.ok) {
+      setTripData(prev => ({ ...prev, ...patch }))
       setEditing(false)
+    } else {
+      setEditError(r.error)
     }
     setSavingEdit(false)
   }
@@ -260,50 +261,44 @@ export default function TripDetailClient({
   async function handleDeleteTrip() {
     if (!confirmDelete) { setConfirmDelete(true); return }
     setDeletingTrip(true)
-    const { error } = await supabase.from('trips').delete().eq('id', trip.id)
-    if (!error) router.push('/')
+    const r = await deleteTrip(supabase, trip.id)
+    if (r.ok) router.push('/')
     else { setDeletingTrip(false); toast('Could not delete the trip') }
   }
 
   // ── Destination handlers ──────────────────────────────────────────────────────
   async function handleAddDest(result: NominatimResult) {
     setAdding(result.place_id)
-    const cityName = extractCity(result)
-    const countryName = result.address.country ?? ''
-    const lat = parseFloat(result.lat)
-    const lng = parseFloat(result.lon)
-    const nextPosition = destinations.length + 1
-
-    const { data, error } = await supabase
-      .from('trip_destinations')
-      .insert({ trip_id: trip.id, city_name: cityName, country_name: countryName, lat, lng, notes: null, position: nextPosition })
-      .select('id, city_name, country_name, lat, lng, notes, position')
-      .single()
-
-    if (!error && data) {
-      setDestinations(prev => [...prev, data])
+    const r = await addDestination(supabase, trip.id, {
+      city_name: extractCity(result),
+      country_name: result.address.country ?? '',
+      lat: parseFloat(result.lat),
+      lng: parseFloat(result.lon),
+    }, destinations.length)
+    if (r.ok) {
+      setDestinations(prev => [...prev, r.data])
       setResults([])
       setQuery('')
+    } else {
+      toast(r.error)
     }
     setAdding(null)
   }
 
   async function handleDeleteDest(destId: string) {
     setDeletingDest(destId)
-    const { data, error } = await supabase.from('trip_destinations').delete().eq('id', destId).select('id')
-    if (!error && data && data.length > 0) setDestinations(prev => prev.filter(d => d.id !== destId))
+    const r = await deleteDestination(supabase, destId)
+    if (r.ok) setDestinations(prev => prev.filter(d => d.id !== destId))
     else toast('Could not remove that destination')
     setDeletingDest(null)
   }
 
   async function handleSaveDestNote(destId: string) {
     setSavingDestNote(true)
-    const { error } = await supabase
-      .from('trip_destinations')
-      .update({ notes: destNoteValue.trim() || null })
-      .eq('id', destId)
-    if (!error) {
-      setDestinations(prev => prev.map(d => d.id === destId ? { ...d, notes: destNoteValue.trim() || null } : d))
+    const notes = destNoteValue.trim() || null
+    const r = await updateDestinationNote(supabase, destId, notes)
+    if (r.ok) {
+      setDestinations(prev => prev.map(d => d.id === destId ? { ...d, notes } : d))
       setEditingDestNoteId(null)
     } else {
       toast('Could not save the note')
@@ -319,15 +314,8 @@ export default function TripDetailClient({
     const previous = destinations
     const reordered = arrayMove(sortedDests, oldIndex, newIndex).map((d, i) => ({ ...d, position: i + 1 }))
     setDestinations(reordered) // optimistic
-
-    // .select() returns the updated rows — empty means RLS silently blocked it.
-    const results = await Promise.all(
-      reordered.map((d, i) =>
-        supabase.from('trip_destinations').update({ position: i + 1 }).eq('id', d.id).select('id')
-      )
-    )
-    const failed = results.some(r => r.error || !r.data || r.data.length === 0)
-    if (failed) { setDestinations(previous); toast('Could not save the new order') } // roll back so UI matches the DB
+    const r = await reorderDestinations(supabase, reordered.map(d => d.id))
+    if (!r.ok) { setDestinations(previous); toast('Could not save the new order') }
   }
 
   // ── Itinerary handlers ────────────────────────────────────────────────────────
@@ -337,46 +325,41 @@ export default function TripDetailClient({
     setItemError(null)
     const { data: { user } } = await supabase.auth.getUser()
     const dayItems = items.filter(i => i.day === day)
-    const { data, error } = await supabase
-      .from('itinerary_items')
-      .insert({ trip_id: trip.id, day, title: newTitle.trim(), time: newTime || null, notes: newNotes.trim() || null, completed: false, position: dayItems.length + 1, type: newType, status: newStatus, user_id: user!.id })
-      .select('id, day, title, time, notes, completed, position, type, status')
-      .single()
-    if (error) {
-      setItemError(error.message)
-    } else if (data) {
-      setItems(prev => [...prev, data])
+    const r = await addItem(supabase, {
+      trip_id: trip.id, day, title: newTitle.trim(),
+      time: newTime || null, notes: newNotes.trim() || null,
+      type: newType, status: newStatus, user_id: user!.id,
+    }, dayItems.length)
+    if (r.ok) {
+      setItems(prev => [...prev, r.data])
       setNewTitle(''); setNewTime(''); setNewNotes(''); setNewType('activity'); setNewStatus('definite'); setAddingToDay(null)
+    } else {
+      setItemError(r.error)
     }
     setSavingItem(false)
   }
 
   async function handleDeleteItem(itemId: string) {
     setDeletingItem(itemId)
-    const { error } = await supabase.from('itinerary_items').delete().eq('id', itemId)
-    if (!error) setItems(prev => prev.filter(i => i.id !== itemId))
+    const r = await deleteItem(supabase, itemId)
+    if (r.ok) setItems(prev => prev.filter(i => i.id !== itemId))
     else toast('Could not delete that activity')
     setDeletingItem(null)
   }
 
   async function handleToggleDone(itemId: string, completed: boolean) {
-    const { error } = await supabase.from('itinerary_items').update({ completed: !completed }).eq('id', itemId)
-    if (!error) setItems(prev => prev.map(i => i.id === itemId ? { ...i, completed: !completed } : i))
+    const r = await setItemCompleted(supabase, itemId, !completed)
+    if (r.ok) setItems(prev => prev.map(i => i.id === itemId ? { ...i, completed: !completed } : i))
     else toast('Could not update that activity')
   }
 
   async function handleSaveEditItem() {
     if (!editItemTitle.trim() || !editingItemId) return
     setSavingEditItem(true)
-    const { error } = await supabase
-      .from('itinerary_items')
-      .update({ title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null, type: editItemType, status: editItemStatus })
-      .eq('id', editingItemId)
-    if (!error) {
-      setItems(prev => prev.map(i => i.id === editingItemId
-        ? { ...i, title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null, type: editItemType, status: editItemStatus }
-        : i
-      ))
+    const patch = { title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null, type: editItemType, status: editItemStatus }
+    const r = await updateItem(supabase, editingItemId, patch)
+    if (r.ok) {
+      setItems(prev => prev.map(i => i.id === editingItemId ? { ...i, ...patch } : i))
       setEditingItemId(null)
     } else {
       toast('Could not save your changes')
@@ -397,12 +380,8 @@ export default function TripDetailClient({
       if (i.id === b.id) return { ...i, position: a.position }
       return i
     }))
-    const results = await Promise.all([
-      supabase.from('itinerary_items').update({ position: b.position }).eq('id', a.id).select('id'),
-      supabase.from('itinerary_items').update({ position: a.position }).eq('id', b.id).select('id'),
-    ])
-    const failed = results.some(r => r.error || !r.data || r.data.length === 0)
-    if (failed) { setItems(previous); toast('Could not save the new order') } // roll back so UI matches the DB
+    const r = await swapItemPositions(supabase, { id: a.id, position: a.position }, { id: b.id, position: b.position })
+    if (!r.ok) { setItems(previous); toast('Could not save the new order') }
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────

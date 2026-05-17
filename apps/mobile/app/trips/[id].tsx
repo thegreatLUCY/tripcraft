@@ -13,6 +13,9 @@ import {
   extractCity, formatDate, getDays, getDayLabel,
   ITEM_TYPES, ACTIVITY_STATUSES, ITEM_TYPE_ICONS, ITEM_TYPE_LABELS,
   ACTIVITY_STATUS_LABELS,
+  loadTripDetail, updateTrip, deleteTrip, addDestination, deleteDestination,
+  updateDestinationNote, reorderDestinations, addItem, deleteItem,
+  setItemCompleted, updateItem, swapItemPositions,
 } from '@tripcraft/shared'
 
 function ItemTypeStatusPicker({
@@ -101,14 +104,10 @@ export default function TripDetailScreen() {
 
   // ── Load data ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    Promise.all([
-      supabase.from('trips').select('id, title, start_date, end_date').eq('id', id).single(),
-      supabase.from('trip_destinations').select('id, city_name, country_name, lat, lng, notes, position').eq('trip_id', id).order('position'),
-      supabase.from('itinerary_items').select('id, day, title, time, notes, completed, position, type, status').eq('trip_id', id).order('day').order('position'),
-    ]).then(([{ data: t }, { data: d }, { data: it }]) => {
-      setTrip(t)
-      setDestinations(d ?? [])
-      setItems(it ?? [])
+    loadTripDetail(supabase, id).then(({ trip, destinations, items }) => {
+      setTrip(trip)
+      setDestinations(destinations)
+      setItems(items)
     })
   }, [id])
 
@@ -154,13 +153,13 @@ export default function TripDetailScreen() {
       return
     }
     setSavingEdit(true)
-    const { error } = await supabase
-      .from('trips')
-      .update({ title: editTitle.trim(), start_date: editStartDate || null, end_date: editEndDate || null })
-      .eq('id', id)
-    if (!error) {
-      setTrip(prev => prev ? { ...prev, title: editTitle.trim(), start_date: editStartDate || null, end_date: editEndDate || null } : prev)
+    const patch = { title: editTitle.trim(), start_date: editStartDate || null, end_date: editEndDate || null }
+    const r = await updateTrip(supabase, id, patch)
+    if (r.ok) {
+      setTrip(prev => prev ? { ...prev, ...patch } : prev)
       setEditing(false)
+    } else {
+      Alert.alert('Something went wrong', 'Could not save your changes.')
     }
     setSavingEdit(false)
   }
@@ -168,7 +167,13 @@ export default function TripDetailScreen() {
   function handleDeleteTrip() {
     Alert.alert('Delete Trip', 'This will permanently delete this trip and all its data.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { await supabase.from('trips').delete().eq('id', id); router.replace('/') } },
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          const r = await deleteTrip(supabase, id)
+          if (r.ok) router.replace('/')
+          else Alert.alert('Something went wrong', 'Could not delete the trip.')
+        },
+      },
     ])
   }
 
@@ -179,35 +184,36 @@ export default function TripDetailScreen() {
 
   async function handleAdd(result: NominatimResult) {
     setAdding(result.place_id)
-    const cityName = extractCity(result)
-    const countryName = result.address.country ?? ''
-    const lat = parseFloat(result.lat)
-    const lng = parseFloat(result.lon)
-    const { data, error } = await supabase
-      .from('trip_destinations')
-      .insert({ trip_id: id, city_name: cityName, country_name: countryName, lat, lng, notes: null, position: destinations.length + 1 })
-      .select('id, city_name, country_name, lat, lng, notes, position').single()
-    if (!error && data) {
-      setDestinations(prev => [...prev, data])
+    const r = await addDestination(supabase, id, {
+      city_name: extractCity(result),
+      country_name: result.address.country ?? '',
+      lat: parseFloat(result.lat),
+      lng: parseFloat(result.lon),
+    }, destinations.length)
+    if (r.ok) {
+      setDestinations(prev => [...prev, r.data])
       setResults([])
       setQuery('')
+    } else {
+      Alert.alert('Something went wrong', r.error)
     }
     setAdding(null)
   }
 
   async function handleDeleteDest(destId: string) {
     setDeletingDest(destId)
-    const { data, error } = await supabase.from('trip_destinations').delete().eq('id', destId).select('id')
-    if (!error && data && data.length > 0) setDestinations(prev => prev.filter(d => d.id !== destId))
+    const r = await deleteDestination(supabase, destId)
+    if (r.ok) setDestinations(prev => prev.filter(d => d.id !== destId))
     else Alert.alert('Something went wrong', 'Could not remove that destination.')
     setDeletingDest(null)
   }
 
   async function handleSaveDestNote(destId: string) {
     setSavingDestNote(true)
-    const { error } = await supabase.from('trip_destinations').update({ notes: destNoteValue.trim() || null }).eq('id', destId)
-    if (!error) {
-      setDestinations(prev => prev.map(d => d.id === destId ? { ...d, notes: destNoteValue.trim() || null } : d))
+    const notes = destNoteValue.trim() || null
+    const r = await updateDestinationNote(supabase, destId, notes)
+    if (r.ok) {
+      setDestinations(prev => prev.map(d => d.id === destId ? { ...d, notes } : d))
       setEditingDestNoteId(null)
     } else {
       Alert.alert('Something went wrong', 'Could not save the note.')
@@ -219,20 +225,13 @@ export default function TripDetailScreen() {
     const idx = sortedDests.findIndex(d => d.id === destId)
     const swapIdx = dir === 'up' ? idx - 1 : idx + 1
     if (swapIdx < 0 || swapIdx >= sortedDests.length) return
-    const a = sortedDests[idx]
-    const b = sortedDests[swapIdx]
     const previous = destinations
-    setDestinations(prev => prev.map(d => {  // optimistic
-      if (d.id === a.id) return { ...d, position: b.position }
-      if (d.id === b.id) return { ...d, position: a.position }
-      return d
-    }))
-    const results = await Promise.all([
-      supabase.from('trip_destinations').update({ position: b.position }).eq('id', a.id).select('id'),
-      supabase.from('trip_destinations').update({ position: a.position }).eq('id', b.id).select('id'),
-    ])
-    const failed = results.some(r => r.error || !r.data || r.data.length === 0)
-    if (failed) { setDestinations(previous); Alert.alert('Something went wrong', 'Could not save the new order.') }
+    const next = [...sortedDests]
+    ;[next[idx], next[swapIdx]] = [next[swapIdx], next[idx]]
+    const reordered = next.map((d, i) => ({ ...d, position: i + 1 }))
+    setDestinations(reordered) // optimistic
+    const r = await reorderDestinations(supabase, reordered.map(d => d.id))
+    if (!r.ok) { setDestinations(previous); Alert.alert('Something went wrong', 'Could not save the new order.') }
   }
 
   // ── Itinerary handlers ────────────────────────────────────────────────────────
@@ -241,43 +240,41 @@ export default function TripDetailScreen() {
     setSavingItem(true)
     const { data: { user } } = await supabase.auth.getUser()
     const dayItems = items.filter(i => i.day === day)
-    const { data, error } = await supabase
-      .from('itinerary_items')
-      .insert({ trip_id: id, day, title: newTitle.trim(), time: newTime || null, notes: newNotes.trim() || null, completed: false, position: dayItems.length + 1, type: newType, status: newStatus, user_id: user!.id })
-      .select('id, day, title, time, notes, completed, position, type, status').single()
-    if (!error && data) {
-      setItems(prev => [...prev, data])
+    const r = await addItem(supabase, {
+      trip_id: id, day, title: newTitle.trim(),
+      time: newTime || null, notes: newNotes.trim() || null,
+      type: newType, status: newStatus, user_id: user!.id,
+    }, dayItems.length)
+    if (r.ok) {
+      setItems(prev => [...prev, r.data])
       setNewTitle(''); setNewTime(''); setNewNotes(''); setNewType('activity'); setNewStatus('definite'); setAddingToDay(null)
+    } else {
+      Alert.alert('Something went wrong', r.error)
     }
     setSavingItem(false)
   }
 
   async function handleDeleteItem(itemId: string) {
     setDeletingItem(itemId)
-    const { error } = await supabase.from('itinerary_items').delete().eq('id', itemId)
-    if (!error) setItems(prev => prev.filter(i => i.id !== itemId))
+    const r = await deleteItem(supabase, itemId)
+    if (r.ok) setItems(prev => prev.filter(i => i.id !== itemId))
     else Alert.alert('Something went wrong', 'Could not delete that activity.')
     setDeletingItem(null)
   }
 
   async function handleToggleDone(itemId: string, completed: boolean) {
-    const { error } = await supabase.from('itinerary_items').update({ completed: !completed }).eq('id', itemId)
-    if (!error) setItems(prev => prev.map(i => i.id === itemId ? { ...i, completed: !completed } : i))
+    const r = await setItemCompleted(supabase, itemId, !completed)
+    if (r.ok) setItems(prev => prev.map(i => i.id === itemId ? { ...i, completed: !completed } : i))
     else Alert.alert('Something went wrong', 'Could not update that activity.')
   }
 
   async function handleSaveEditItem() {
     if (!editItemTitle.trim() || !editingItemId) return
     setSavingEditItem(true)
-    const { error } = await supabase
-      .from('itinerary_items')
-      .update({ title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null, type: editItemType, status: editItemStatus })
-      .eq('id', editingItemId)
-    if (!error) {
-      setItems(prev => prev.map(i => i.id === editingItemId
-        ? { ...i, title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null, type: editItemType, status: editItemStatus }
-        : i
-      ))
+    const patch = { title: editItemTitle.trim(), time: editItemTime || null, notes: editItemNotes.trim() || null, type: editItemType, status: editItemStatus }
+    const r = await updateItem(supabase, editingItemId, patch)
+    if (r.ok) {
+      setItems(prev => prev.map(i => i.id === editingItemId ? { ...i, ...patch } : i))
       setEditingItemId(null)
     } else {
       Alert.alert('Something went wrong', 'Could not save your changes.')
@@ -298,12 +295,8 @@ export default function TripDetailScreen() {
       if (i.id === b.id) return { ...i, position: a.position }
       return i
     }))
-    const results = await Promise.all([
-      supabase.from('itinerary_items').update({ position: b.position }).eq('id', a.id).select('id'),
-      supabase.from('itinerary_items').update({ position: a.position }).eq('id', b.id).select('id'),
-    ])
-    const failed = results.some(r => r.error || !r.data || r.data.length === 0)
-    if (failed) { setItems(previous); Alert.alert('Something went wrong', 'Could not save the new order.') }
+    const r = await swapItemPositions(supabase, { id: a.id, position: a.position }, { id: b.id, position: b.position })
+    if (!r.ok) { setItems(previous); Alert.alert('Something went wrong', 'Could not save the new order.') }
   }
 
   return (
